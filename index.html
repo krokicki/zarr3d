@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Three.js Rotating Cube</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+        #playButton {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+<button id="playButton">Play Ani<mation</button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+    class ColorCube {
+        constructor(geometry, color, baseX, baseY, baseZ) {
+            this.baseZ = baseZ;
+            
+            // Create edges
+            const edges = new THREE.EdgesGeometry(geometry);
+            this.line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: edgeColor }));
+            
+            // Create solid cube
+            this.solid = new THREE.Mesh(
+                geometry,
+                new THREE.MeshBasicMaterial({ 
+                    color: color,
+                    transparent: true,
+                    opacity: cubeOpacity
+                })
+            );
+            
+            // Set initial positions
+            this.line.position.set(baseX, baseY, 0);
+            this.solid.position.set(baseX, baseY, 0);
+        }
+
+        updateZ(newZ) {
+            this.line.position.z = newZ;
+            this.solid.position.z = newZ;
+        }
+
+        addToGroup(group) {
+            group.add(this.line);
+            group.add(this.solid);
+        }
+    }
+
+    const gridSize = 16; // Number of cubes in each dimension
+    const spacing = 1.2; // Space between cubes
+    const offset = (gridSize * spacing) / 2; // Center the grid
+    const edgeColor = 0x000011;
+    const cubeOpacity = 0.8;
+    let zSpacingFactor = 0; // Initial z-spacing factor
+    let isAnimating = false;
+    
+    // Create a temporary canvas to load and process the Lena image
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = gridSize;
+    tempCanvas.height = gridSize;
+    const ctx = tempCanvas.getContext('2d');
+    
+    // Create an image and wait for it to load
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.src = 'https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png';
+    img.onload = () => {
+        // Draw and scale image to grid size
+        ctx.save();
+        ctx.translate(0, gridSize);
+        ctx.scale(1, -1);
+        ctx.drawImage(img, 0, 0, gridSize, gridSize);
+        ctx.restore();
+        // Get pixel data
+        const imageData = ctx.getImageData(0, 0, gridSize, gridSize);
+        renderScene(imageData);
+    };
+
+    function renderScene(imageData) {
+        // Set up scene, camera, and renderer
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Add orbit controls
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; // Add smooth damping
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.minDistance = 3;
+        controls.maxDistance = 100;
+
+        // Create cube template
+        const geometry = new THREE.BoxGeometry(1, 1, 1);
+        
+        // Group to hold all cubes
+        const cubeGroupColor = new THREE.Group();
+        const cubeGroupRGB = new THREE.Group();
+        const cubes = []; // Store cube references for animation
+        
+        // Create cubes in a grid
+        for(let x = 0; x < gridSize; x++) {
+            for(let y = 0; y < gridSize; y++) {
+                // Generate colors for each cube
+                const intensity_r = imageData.data[y * gridSize * 4 + x * 4] / 255;
+                const intensity_g = imageData.data[y * gridSize * 4 + x * 4 + 1] / 255;
+                const intensity_b = imageData.data[y * gridSize * 4 + x * 4 + 2] / 255;
+                const rgbValues = [
+                    new THREE.Color(intensity_r, 0, 0), 
+                    new THREE.Color(0, intensity_g, 0), 
+                    new THREE.Color(0, 0, intensity_b)];
+                
+                const baseX = x * spacing - offset;
+                const baseY = y * spacing - offset;
+                const colorCube = new ColorCube(geometry, new THREE.Color(intensity_r, intensity_g, intensity_b), baseX, baseY, 0);
+                colorCube.addToGroup(cubeGroupColor);
+
+                // Create boxes at 3 different z-levels
+                for(let z = 0; z < 3; z++) {
+                    const baseZ = z-1;    
+                    const colorCube = new ColorCube(geometry, rgbValues[z], baseX, baseY, baseZ);
+                    cubes.push(colorCube);
+                    colorCube.addToGroup(cubeGroupRGB);
+                }
+            }
+        }
+        
+        scene.add(cubeGroupColor);
+        camera.position.z = 30; // Move camera back to see full grid
+
+        // Animation loop (needed for continuous rendering)
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (isAnimating && zSpacingFactor < 10) {
+                zSpacingFactor += 0.05; // Adjust speed by changing this value
+                
+                // Update all cube positions
+                cubes.forEach(cube => {
+                    const newZ = cube.baseZ * spacing * zSpacingFactor;
+                    cube.updateZ(newZ);
+                });
+            }
+            
+            controls.update(); // Update controls in animation loop
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Add play button functionality
+        const playButton = document.getElementById('playButton');
+        playButton.addEventListener('click', () => {
+            if (!isAnimating) {
+                scene.remove(cubeGroupColor);
+                scene.add(cubeGroupRGB);
+            }
+            else {
+                scene.remove(cubeGroupRGB);
+                scene.add(cubeGroupColor);
+                // Reset zSpacingFactor
+                zSpacingFactor = 0;
+                cubes.forEach(cube => {
+                    cube.updateZ(0);
+                });
+            }
+            isAnimating = !isAnimating;
+            playButton.textContent = isAnimating ? 'Stop Animation' : 'Play Animation';
+        });
+
+        animate();
+    }
+</script>>
+</body>
+</html>
