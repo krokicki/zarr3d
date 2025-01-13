@@ -17,17 +17,45 @@
     </style>
 </head>
 <body>
-<button id="playButton">Play Ani<mation</button>
+<button id="playButton">Play Animation</button>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script>
+
+    // Constants
+    const gridSize = 16; // Number of cubes in each dimension
+    const spacing = 1.2; // Space between cubes
+    const offset = (gridSize * spacing) / 2; // Center the grid
+    const edgeColor = 0x000011;
+    const cubeOpacity = 0.8;
+    
+    // Animation phases
+    const PHASES = {
+        IDLE: 0,
+        SEPARATE_RGB: 1,
+        MAKE_3D: 2
+    };
+    let currentPhase = PHASES.IDLE;
+    let zSpacingFactor = 0; // Z-spacing for SEPARATE_RGB
+    let isAnimating = false;
+    let fadeInFactor = 0; // For fading in 3D boxes
+
     class ColorCube {
         constructor(geometry, color, baseX, baseY, baseZ) {
             this.baseZ = baseZ;
+            this.baseX = baseX;
+            this.baseY = baseY;
             
             // Create edges
             const edges = new THREE.EdgesGeometry(geometry);
-            this.line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: edgeColor }));
+            this.line = new THREE.LineSegments(
+                edges, 
+                new THREE.LineBasicMaterial({ 
+                    color: edgeColor, 
+                    transparent: true, 
+                    opacity: cubeOpacity 
+                })
+            );
             
             // Create solid cube
             this.solid = new THREE.Mesh(
@@ -40,13 +68,8 @@
             );
             
             // Set initial positions
-            this.line.position.set(baseX, baseY, 0);
-            this.solid.position.set(baseX, baseY, 0);
-        }
-
-        updateZ(newZ) {
-            this.line.position.z = newZ;
-            this.solid.position.z = newZ;
+            this.line.position.set(baseX, baseY, baseZ);
+            this.solid.position.set(baseX, baseY, baseZ);
         }
 
         addToGroup(group) {
@@ -55,14 +78,7 @@
         }
     }
 
-    const gridSize = 16; // Number of cubes in each dimension
-    const spacing = 1.2; // Space between cubes
-    const offset = (gridSize * spacing) / 2; // Center the grid
-    const edgeColor = 0x000011;
-    const cubeOpacity = 0.8;
-    let zSpacingFactor = 0; // Initial z-spacing factor
-    let isAnimating = false;
-    
+
     // Create a temporary canvas to load and process the Lena image
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = gridSize;
@@ -89,7 +105,7 @@
         // Set up scene, camera, and renderer
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer();
+        const renderer = new THREE.WebGLRenderer({antialias: true});
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
@@ -99,15 +115,15 @@
         controls.dampingFactor = 0.05;
         controls.screenSpacePanning = false;
         controls.minDistance = 3;
-        controls.maxDistance = 100;
+        controls.maxDistance = 200;
 
         // Create cube template
         const geometry = new THREE.BoxGeometry(1, 1, 1);
         
         // Group to hold all cubes
-        const cubeGroupColor = new THREE.Group();
-        const cubeGroupRGB = new THREE.Group();
-        const cubes = []; // Store cube references for animation
+        const groupColorPixels = new THREE.Group();
+        const rgbGroups = [new THREE.Group(), new THREE.Group(), new THREE.Group()]; // One group per RGB channel
+        const rgbBoxGroups = [new THREE.Group(), new THREE.Group(), new THREE.Group()]; // One group per RGB channel
         
         // Create cubes in a grid
         for(let x = 0; x < gridSize; x++) {
@@ -124,33 +140,90 @@
                 const baseX = x * spacing - offset;
                 const baseY = y * spacing - offset;
                 const colorCube = new ColorCube(geometry, new THREE.Color(intensity_r, intensity_g, intensity_b), baseX, baseY, 0);
-                colorCube.addToGroup(cubeGroupColor);
+                colorCube.addToGroup(groupColorPixels);
 
-                // Create boxes at 3 different z-levels
-                for(let z = 0; z < 3; z++) {
-                    const baseZ = z-1;    
-                    const colorCube = new ColorCube(geometry, rgbValues[z], baseX, baseY, baseZ);
-                    cubes.push(colorCube);
-                    colorCube.addToGroup(cubeGroupRGB);
+                // Create each channel
+                for(let c = 0; c < 3; c++) {
+                    const baseZ = 0;
+                    const colorCube = new ColorCube(geometry, rgbValues[c], baseX, baseY, baseZ);
+                    colorCube.addToGroup(rgbGroups[c]);
+
+                    // Create rest of the cubes in Z 
+                    for(let z = 0; z < gridSize; z++) {
+                        const baseZ2 = z * spacing - offset;
+
+                        // Vary the original intensities by a small random amount
+                        const epsilon = 0.2; // Small variation range
+                        const intensity_r2 = Math.max(0, Math.min(1, intensity_r + (Math.random() - 0.5) * epsilon));
+                        const intensity_g2 = Math.max(0, Math.min(1, intensity_g + (Math.random() - 0.5) * epsilon)); 
+                        const intensity_b2 = Math.max(0, Math.min(1, intensity_b + (Math.random() - 0.5) * epsilon));
+
+                        const rgbValues2 = [
+                            new THREE.Color(intensity_r2, 0, 0), 
+                            new THREE.Color(0, intensity_g2, 0), 
+                            new THREE.Color(0, 0, intensity_b2)];
+
+                        const colorBoxCube = new ColorCube(geometry, rgbValues2[c], baseX, baseY, baseZ2);
+                        // Set initial opacity to 0
+                        colorBoxCube.solid.material.opacity = 0;
+                        colorBoxCube.line.material.opacity = 0;
+                        colorBoxCube.addToGroup(rgbBoxGroups[c]);
+                    }
                 }
             }
         }
-        
-        scene.add(cubeGroupColor);
+
+        scene.add(groupColorPixels);
         camera.position.z = 30; // Move camera back to see full grid
 
         // Animation loop (needed for continuous rendering)
         function animate() {
             requestAnimationFrame(animate);
             
-            if (isAnimating && zSpacingFactor < 10) {
-                zSpacingFactor += 0.05; // Adjust speed by changing this value
-                
-                // Update all cube positions
-                cubes.forEach(cube => {
-                    const newZ = cube.baseZ * spacing * zSpacingFactor;
-                    cube.updateZ(newZ);
-                });
+            if (isAnimating) {
+                if (currentPhase === PHASES.IDLE) {
+                    currentPhase = PHASES.SEPARATE_RGB;
+                }
+                switch(currentPhase) {
+                    case PHASES.SEPARATE_RGB:
+                        if (zSpacingFactor === 0) {
+                            scene.remove(groupColorPixels);
+                            rgbGroups.forEach(group => scene.add(group));
+                        }
+                        if (zSpacingFactor < 20) {
+                            zSpacingFactor += 0.10;
+                            rgbGroups.forEach((group, idx) => {
+                                group.position.z = (idx-1) * spacing * zSpacingFactor;
+                            });
+                        } else {
+                            currentPhase = PHASES.MAKE_3D;
+                            fadeInFactor = 0;
+                            // camera.position.z = 60;
+                        }
+                        break;
+
+                    case PHASES.MAKE_3D:
+                        if (fadeInFactor === 0) {
+                            rgbBoxGroups.forEach(group => scene.add(group));
+                            rgbBoxGroups.forEach((group, idx) => {
+                                group.position.z = (idx-1) * spacing * 20;
+                            });
+                        }
+                        if (fadeInFactor < 1) {
+                            fadeInFactor += 0.1;
+                            rgbBoxGroups.forEach(group => {
+                                group.traverse(child => {
+                                    if (child.material) {
+                                        child.material.opacity = fadeInFactor * cubeOpacity;
+                                    }
+                                });
+                            });
+                        }
+                        else {
+                            rgbGroups.forEach(group => scene.remove(group));
+                        }
+                        break;
+                }
             }
             
             controls.update(); // Update controls in animation loop
@@ -167,18 +240,16 @@
         // Add play button functionality
         const playButton = document.getElementById('playButton');
         playButton.addEventListener('click', () => {
-            if (!isAnimating) {
-                scene.remove(cubeGroupColor);
-                scene.add(cubeGroupRGB);
-            }
-            else {
-                scene.remove(cubeGroupRGB);
-                scene.add(cubeGroupColor);
-                // Reset zSpacingFactor
-                zSpacingFactor = 0;
-                cubes.forEach(cube => {
-                    cube.updateZ(0);
-                });
+            if (isAnimating) {
+                // scene.remove(rgbContainer);
+                // scene.add(groupColorPixels);
+                // Reset animation factors
+                // zSpacingFactor = 0;
+                // currentPhase = PHASES.IDLE;
+                // rgbGroups.forEach(group => {
+                //     group.position.set(0, 0, 0);
+                // });
+                camera.position.z = 30;
             }
             isAnimating = !isAnimating;
             playButton.textContent = isAnimating ? 'Stop Animation' : 'Play Animation';
@@ -186,6 +257,6 @@
 
         animate();
     }
-</script>>
+</script>
 </body>
 </html>
