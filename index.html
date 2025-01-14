@@ -28,19 +28,22 @@
     const offset = (gridSize * spacing) / 2; // Center the grid
     const edgeColor = 0x000011;
     const cubeOpacity = 0.8;
+    const chunkSize = 4; // Size of cube chunks
     
     // Animation phases
     const PHASES = {
         IDLE: 0,
         SEPARATE_RGB: 1,
         MAKE_3D: 2,
-        ISOLATE: 3
+        ISOLATE: 3,
+        CHUNK: 4
     };
     let currentPhase = PHASES.IDLE;
     let zSpacingFactor = 0; // Z-spacing for SEPARATE_RGB
     let isAnimating = false;
     let fadeInFactor = 0; // For fading in 3D boxes
     let isolateFactor = 0; // For fading out R and B channels
+    let chunkFactor = 0; // For chunk transition
 
     class ColorCube {
         constructor(geometry, color, baseX, baseY, baseZ) {
@@ -126,6 +129,7 @@
         const groupColorPixels = new THREE.Group();
         const rgbGroups = [new THREE.Group(), new THREE.Group(), new THREE.Group()]; // One group per RGB channel
         const rgbBoxGroups = [new THREE.Group(), new THREE.Group(), new THREE.Group()]; // One group per RGB channel
+        const chunkGroups = []; // Groups for 4x4x4 chunks
         
         // Create cubes in a grid
         for(let x = 0; x < gridSize; x++) {
@@ -170,6 +174,20 @@
                         colorBoxCube.solid.material.opacity = 0;
                         colorBoxCube.line.material.opacity = 0;
                         colorBoxCube.addToGroup(rgbBoxGroups[c]);
+
+                        // Add to chunk groups
+                        const chunkX = Math.floor(x / chunkSize);
+                        const chunkY = Math.floor(y / chunkSize);
+                        const chunkZ = Math.floor(z / chunkSize);
+                        const chunkIndex = chunkX + chunkY * (gridSize/chunkSize) + chunkZ * Math.pow(gridSize/chunkSize, 2);
+                        
+                        if (!chunkGroups[chunkIndex]) {
+                            chunkGroups[chunkIndex] = new THREE.Group();
+                        }
+                        const chunkCube = new ColorCube(geometry, rgbValues2[c], baseX, baseY, baseZ2);
+                        chunkCube.solid.material.opacity = 0;
+                        chunkCube.line.material.opacity = 0;
+                        chunkCube.addToGroup(chunkGroups[chunkIndex]);
                     }
                 }
             }
@@ -235,6 +253,31 @@
                                 group.traverse(child => {
                                     if (child.material) {
                                         child.material.opacity = (1 - isolateFactor) * cubeOpacity;
+                                    }
+                                });
+                            });
+                        } else {
+                            currentPhase = PHASES.CHUNK;
+                            rgbBoxGroups.forEach(group => scene.remove(group));
+                            chunkGroups.forEach((group, idx) => {
+                                scene.add(group);
+                                const isAlternate = (Math.floor(idx % (gridSize/chunkSize)) + Math.floor(idx / (gridSize/chunkSize)) + Math.floor(idx / Math.pow(gridSize/chunkSize, 2))) % 2;
+                                group.traverse(child => {
+                                    if (child.material && child.geometry && child.geometry.type === 'BoxGeometry') {
+                                        child.material.color = isAlternate ? new THREE.Color(0.8, 0.2, 0.2) : new THREE.Color(0.2, 0.8, 0.2);
+                                    }
+                                });
+                            });
+                        }
+                        break;
+
+                    case PHASES.CHUNK:
+                        if (chunkFactor < 1) {
+                            chunkFactor += 0.04;
+                            chunkGroups.forEach(group => {
+                                group.traverse(child => {
+                                    if (child.material) {
+                                        child.material.opacity = chunkFactor * cubeOpacity;
                                     }
                                 });
                             });
