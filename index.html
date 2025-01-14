@@ -33,12 +33,14 @@
     const PHASES = {
         IDLE: 0,
         SEPARATE_RGB: 1,
-        MAKE_3D: 2
+        MAKE_3D: 2,
+        ISOLATE: 3
     };
     let currentPhase = PHASES.IDLE;
     let zSpacingFactor = 0; // Z-spacing for SEPARATE_RGB
     let isAnimating = false;
     let fadeInFactor = 0; // For fading in 3D boxes
+    let isolateFactor = 0; // For fading out R and B channels
 
     class ColorCube {
         constructor(geometry, color, baseX, baseY, baseZ) {
@@ -198,7 +200,6 @@
                         } else {
                             currentPhase = PHASES.MAKE_3D;
                             fadeInFactor = 0;
-                            // camera.position.z = 60;
                         }
                         break;
 
@@ -220,7 +221,23 @@
                             });
                         }
                         else {
+                            currentPhase = PHASES.ISOLATE;
                             rgbGroups.forEach(group => scene.remove(group));
+                            isolateFactor = 0;
+                        }
+                        break;
+
+                    case PHASES.ISOLATE:
+                        if (isolateFactor < 1) {
+                            isolateFactor += 0.04;
+                            // Fade out red and blue channels
+                            [rgbBoxGroups[0], rgbBoxGroups[2]].forEach(group => {
+                                group.traverse(child => {
+                                    if (child.material) {
+                                        child.material.opacity = (1 - isolateFactor) * cubeOpacity;
+                                    }
+                                });
+                            });
                         }
                         break;
                 }
@@ -241,14 +258,6 @@
         const playButton = document.getElementById('playButton');
         playButton.addEventListener('click', () => {
             if (isAnimating) {
-                // scene.remove(rgbContainer);
-                // scene.add(groupColorPixels);
-                // Reset animation factors
-                // zSpacingFactor = 0;
-                // currentPhase = PHASES.IDLE;
-                // rgbGroups.forEach(group => {
-                //     group.position.set(0, 0, 0);
-                // });
                 camera.position.z = 30;
             }
             isAnimating = !isAnimating;
