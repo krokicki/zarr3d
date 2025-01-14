@@ -36,7 +36,8 @@
         SEPARATE_RGB: 1,
         MAKE_3D: 2,
         ISOLATE: 3,
-        CHUNK: 4
+        CHUNK: 4,
+        EXPLODE: 5
     };
     let currentPhase = PHASES.IDLE;
     let zSpacingFactor = 0; // Z-spacing for SEPARATE_RGB
@@ -44,6 +45,7 @@
     let fadeInFactor = 0; // For fading in 3D boxes
     let isolateFactor = 0; // For fading out R and B channels
     let chunkFactor = 0; // For chunk transition
+    let explodeFactor = 0; // For exploding chunks
 
     class ColorCube {
         constructor(geometry, color, baseX, baseY, baseZ) {
@@ -183,6 +185,12 @@
                         
                         if (!chunkGroups[chunkIndex]) {
                             chunkGroups[chunkIndex] = new THREE.Group();
+                            // Store original position for explosion animation
+                            chunkGroups[chunkIndex].userData.originalPosition = new THREE.Vector3(
+                                chunkX * chunkSize * spacing - offset + (chunkSize * spacing / 2),
+                                chunkY * chunkSize * spacing - offset + (chunkSize * spacing / 2),
+                                chunkZ * chunkSize * spacing - offset + (chunkSize * spacing / 2)
+                            );
                         }
                         const chunkCube = new ColorCube(geometry, rgbValues2[c], baseX, baseY, baseZ2);
                         chunkCube.solid.material.opacity = 0;
@@ -280,6 +288,25 @@
                                         child.material.opacity = chunkFactor * cubeOpacity;
                                     }
                                 });
+                            });
+                        } else {
+                            currentPhase = PHASES.EXPLODE;
+                            explodeFactor = 0;
+                            camera.position.z = 60; // Move camera back to see explosion
+                        }
+                        break;
+
+                    case PHASES.EXPLODE:
+                        if (explodeFactor < 1) {
+                            explodeFactor += 0.02;
+                            chunkGroups.forEach(group => {
+                                const originalPos = group.userData.originalPosition;
+                                const explosionFactor = 2; // How far chunks move apart
+                                group.position.set(
+                                    originalPos.x * explosionFactor * explodeFactor,
+                                    originalPos.y * explosionFactor * explodeFactor,
+                                    originalPos.z * explosionFactor * explodeFactor
+                                );
                             });
                         }
                         break;
