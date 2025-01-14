@@ -5,19 +5,32 @@
     <style>
         body { margin: 0; }
         canvas { display: block; }
-        #playButton {
+        .controls-container {
             position: fixed;
             top: 20px;
             left: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+        button {
             padding: 10px 20px;
             font-size: 16px;
             cursor: pointer;
-            z-index: 100;
+        }
+        #cameraInput {
+            padding: 10px;
+            width: 300px;
+            font-size: 14px;
         }
     </style>
 </head>
 <body>
-<button id="playButton">Play Animation</button>
+<div class="controls-container">
+    <button id="playButton">Play Animation</button>
+    <button id="copyButton">Copy Camera Config</button>
+    <input type="text" id="cameraInput" placeholder="Paste camera config here">
+</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script>
@@ -84,7 +97,6 @@
             group.add(this.solid);
         }
     }
-
 
     // Create a temporary canvas to load and process the Lena image
     const tempCanvas = document.createElement('canvas');
@@ -201,8 +213,17 @@
             }
         }
 
+
+        function applyCameraConfig(config) {
+        camera.position.fromArray(config.position);
+        camera.rotation.fromArray(config.rotation);
+            controls.target.fromArray(config.target);
+            controls.update();
+        }
+
         scene.add(groupColorPixels);
-        camera.position.z = 30; // Move camera back to see full grid
+        //camera.position.z = 30; // Move camera back to see full grid
+        applyCameraConfig({"position":[20.76671676576625,9.71930862752235,19.346279088584794],"rotation":[-0.46555495239779277,0.7645660537408575,0.33468136922380465,"XYZ"],"target":[0,0,0]});
 
         // Animation loop (needed for continuous rendering)
         function animate() {
@@ -297,8 +318,24 @@
                         break;
 
                     case PHASES.EXPLODE:
-                        if (explodeFactor < 1) {
-                            explodeFactor += 0.02;
+                        if (!explodeFactor) {
+                            explodeFactor = 0;
+                            explodePhase = 0; // 0-5: explode/collapse cycles
+                            explodeDirection = 1; // 1 = exploding, -1 = collapsing
+                        }
+
+                        if (explodePhase < 3) { // 3 full cycles = 6 phases
+                            explodeFactor += 0.02 * explodeDirection;
+                            
+                            // Switch direction when reaching bounds
+                            if (explodeFactor >= 1) {
+                                explodeDirection = -1;
+                            } else if (explodeFactor <= 0) {
+                                explodeDirection = 1;
+                                explodePhase++;
+                            }
+
+                            // Apply positions
                             chunkGroups.forEach(group => {
                                 const originalPos = group.userData.originalPosition;
                                 const explosionFactor = 2; // How far chunks move apart
@@ -332,6 +369,28 @@
             }
             isAnimating = !isAnimating;
             playButton.textContent = isAnimating ? 'Stop Animation' : 'Play Animation';
+        });
+
+        // Add copy camera config button functionality
+        const copyButton = document.getElementById('copyButton');
+        copyButton.addEventListener('click', () => {
+            const cameraConfig = {
+                position: camera.position.toArray(),
+                rotation: camera.rotation.toArray(),
+                target: controls.target.toArray()
+            };
+            navigator.clipboard.writeText(JSON.stringify(cameraConfig));
+        });
+
+        // Add camera config input functionality
+        const cameraInput = document.getElementById('cameraInput');
+        cameraInput.addEventListener('change', () => {
+            try {
+                const config = JSON.parse(cameraInput.value);
+                applyCameraConfig(config);
+            } catch (e) {
+                console.error('Invalid camera configuration');
+            }
         });
 
         animate();
